@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/nireo/dkv/db"
+	"github.com/nireo/dkv/handlers"
 )
 
 func main() {
@@ -13,4 +14,9 @@ func main() {
 		log.Fatalf("error opening db: %s, err: %s", dbPath, err)
 	}
 	defer db.Close()
+
+	server := handlers.NewServer(db)
+	if err := server.Listen("localhost:8080"); err != nil {
+		log.Fatalf("error when running server, err: %s", err)
+	}
 }
