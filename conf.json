@@ -1,0 +1,19 @@
+{
+  "shards": [
+    {
+      "name": "sh1",
+      "index": 0,
+      "address": "localhost:8080"
+    },
+    {
+      "name": "sh2",
+      "index": 1,
+      "address": "localhost:8081"
+    },
+    {
+      "name": "sh3",
+      "index": 2,
+      "address": "localhost:8082"
+    }
+  ]
+}

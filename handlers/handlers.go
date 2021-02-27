@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"fmt"
+	"hash/fnv"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -12,16 +14,30 @@ import (
 
 // Server contains handlers
 type Server struct {
-	db     *db.DB
-	router *httprouter.Router
+	db         *db.DB
+	router     *httprouter.Router
+	shardIndex int
+	shardCount int
+	addresses  map[int]string
 }
 
 // NewServer returns a new instance of server given a database
-func NewServer(db *db.DB) *Server {
+func NewServer(db *db.DB, index, scount int, addresses map[int]string) *Server {
 	return &Server{
-		db:     db,
-		router: httprouter.New(),
+		db:         db,
+		router:     httprouter.New(),
+		shardIndex: index,
+		shardCount: scount,
+		addresses:  addresses,
 	}
+}
+
+// getShard calculates a fnv-hash based on the shard index and key
+func (s *Server) getShard(key string) int {
+	h := fnv.New64()
+	h.Write([]byte(key))
+
+	return int(h.Sum64() % uint64(s.shardCount))
 }
 
 // Get handles getting a key from the server
@@ -30,6 +46,12 @@ func (s *Server) Get(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	value, err := s.db.Get(key)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("key %s not found", key), http.StatusNotFound)
+		return
+	}
+
+	shard := s.getShard(key)
+	if shard != s.shardIndex {
+		s.redirectRequest(w, r, shard)
 		return
 	}
 
@@ -46,13 +68,31 @@ func (s *Server) Set(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 		return
 	}
 
+	shard := s.getShard(key)
+	if shard != s.shardIndex {
+		s.redirectRequest(w, r, shard)
+		return
+	}
+
 	if err := s.db.Set(key, value); err != nil {
 		http.Error(w, "error settings key", http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	fmt.Fprintf(w, "key %s has been set", key)
+	fmt.Fprintf(w, "key %s has been set, shardId=%d", key, shard)
+}
+
+func (s *Server) redirectRequest(w http.ResponseWriter, r *http.Request, shard int) {
+	url := "http://" + s.addresses[shard] + r.RequestURI
+	resp, err := http.Get(url)
+	if err != nil {
+		http.Error(w, "something went wrong, "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	io.Copy(w, resp.Body)
 }
 
 // Delete handles the deletion of a key-value pair from the database
