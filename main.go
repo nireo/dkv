@@ -1,7 +1,16 @@
 package main
 
-import "fmt"
+import (
+	"log"
+
+	"github.com/nireo/dkv/db"
+)
 
 func main() {
-	fmt.Println("welcome to dkv")
+	dbPath := "./dbfile"
+	db, err := db.NewDatabase(dbPath)
+	if err != nil {
+		log.Fatalf("error opening db: %s, err: %s", dbPath, err)
+	}
+	defer db.Close()
 }
