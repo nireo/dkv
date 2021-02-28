@@ -51,7 +51,7 @@ func (s *Server) Get(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 
 	shard := s.getShard(key)
 	if shard != s.shardIndex {
-		s.redirectRequest(w, r, shard)
+		s.redirectRequest(w, r, shard, http.MethodGet)
 		return
 	}
 
@@ -70,7 +70,7 @@ func (s *Server) Set(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 
 	shard := s.getShard(key)
 	if shard != s.shardIndex {
-		s.redirectRequest(w, r, shard)
+		s.redirectRequest(w, r, shard, http.MethodPut)
 		return
 	}
 
@@ -83,21 +83,36 @@ func (s *Server) Set(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	fmt.Fprintf(w, "key %s has been set, shardId=%d", key, shard)
 }
 
-func (s *Server) redirectRequest(w http.ResponseWriter, r *http.Request, shard int) {
+// redirectRequest redirects a request to a given shard.
+func (s *Server) redirectRequest(w http.ResponseWriter, r *http.Request, shard int, method string) {
 	url := "http://" + s.addresses[shard] + r.RequestURI
-	resp, err := http.Get(url)
+
+	client := &http.Client{}
+	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
 		http.Error(w, "something went wrong, "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer resp.Body.Close()
 
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "something went wrong, "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	defer resp.Body.Close()
 	io.Copy(w, resp.Body)
 }
 
 // Delete handles the deletion of a key-value pair from the database
 func (s *Server) Delete(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	key := ps.ByName("key")
+
+	shard := s.getShard(key)
+	if shard != s.shardIndex {
+		s.redirectRequest(w, r, shard, http.MethodDelete)
+	}
+
 	if err := s.db.Delete(key); err != nil {
 		http.Error(w, "could not delete key from database", http.StatusInternalServerError)
 		return
@@ -106,13 +121,14 @@ func (s *Server) Delete(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Listen sets up all the routes and stars listening on a given address
 func (s *Server) Listen(address string) error {
 	s.router.GET("/v1/:key", s.Get)
 	s.router.PUT("/v1/:key", s.Set)
 	s.router.DELETE("/v1/:key", s.Delete)
 
-	if err := http.ListenAndServe("127.0.0.1:8080", s.router); err != nil {
-		log.Fatalf("error listening on port 8080, err: %s", err)
+	if err := http.ListenAndServe(address, s.router); err != nil {
+		log.Fatalf("error listening on port %s, err: %s", address, err)
 	}
 
 	return nil

@@ -21,11 +21,9 @@ var (
 
 func parse() {
 	flag.Parse()
-
 	if *dbPath == "" {
 		log.Fatal("database field cannot be empty")
 	}
-
 	if *shard == "" {
 		log.Fatal("shard field cannot be empty")
 	}
@@ -56,15 +54,16 @@ func main() {
 		log.Fatalf("could not find shard %q in shard list", *shard)
 	}
 
-	dbPath := "./dbfile"
-	db, err := db.NewDatabase(dbPath)
+	db, err := db.NewDatabase(*dbPath)
 	if err != nil {
-		log.Fatalf("error opening db: %s, err: %s", dbPath, err)
+		log.Fatalf("error opening db: %s, err: %s", *dbPath, err)
 	}
 	defer db.Close()
 
+	log.Printf("starting shard: %s at %s", conf.Shards[index].Name, conf.Shards[index].Address)
+
 	server := handlers.NewServer(db, index, len(conf.Shards), addresses)
-	if err := server.Listen("localhost:8080"); err != nil {
+	if err := server.Listen(*address); err != nil {
 		log.Fatalf("error when running server, err: %s", err)
 	}
 }
