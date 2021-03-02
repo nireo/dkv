@@ -34,17 +34,9 @@ func main() {
 		log.Fatalf("could not parse config file, err: %s", err)
 	}
 
-	index := -1
-	var addresses = make(map[int]string)
-	for _, s := range conf.Shards {
-		addresses[s.Index] = s.Address
-		if s.Name == *shard {
-			index = s.Index
-		}
-	}
-
-	if index == -1 {
-		log.Fatalf("could not find shard %q in shard list", *shard)
+	shards, err := conf.ParseConfigShards(*shard)
+	if err != nil {
+		log.Fatalf("error parsing shard, err: %s", err)
 	}
 
 	db, err := db.NewDatabase(*dbPath)
@@ -53,9 +45,9 @@ func main() {
 	}
 	defer db.Close()
 
-	log.Printf("starting shard: %s at %s", conf.Shards[index].Name, conf.Shards[index].Address)
+	log.Printf("starting shard: %d at %s", shards.Amount, shards.Addresses[shards.Index])
 
-	server := handlers.NewServer(db, index, len(conf.Shards), addresses)
+	server := handlers.NewServer(db, shards)
 	if err := server.Listen(*address); err != nil {
 		log.Fatalf("error when running server, err: %s", err)
 	}

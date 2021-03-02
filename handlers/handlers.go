@@ -2,56 +2,45 @@ package handlers
 
 import (
 	"fmt"
-	"hash/fnv"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 
 	"github.com/julienschmidt/httprouter"
+	"github.com/nireo/dkv/config"
 	"github.com/nireo/dkv/db"
 )
 
 // Server contains handlers
 type Server struct {
-	db         *db.DB
-	router     *httprouter.Router
-	shardIndex int
-	shardCount int
-	addresses  map[int]string
+	db     *db.DB
+	router *httprouter.Router
+	shards *config.Shards
 }
 
 // NewServer returns a new instance of server given a database
-func NewServer(db *db.DB, index, scount int, addresses map[int]string) *Server {
+func NewServer(db *db.DB, s *config.Shards) *Server {
 	return &Server{
-		db:         db,
-		router:     httprouter.New(),
-		shardIndex: index,
-		shardCount: scount,
-		addresses:  addresses,
+		db:     db,
+		router: httprouter.New(),
+		shards: s,
 	}
-}
-
-// getShard calculates a fnv-hash based on the shard index and key
-func (s *Server) getShard(key string) int {
-	h := fnv.New64()
-	h.Write([]byte(key))
-
-	return int(h.Sum64() % uint64(s.shardCount))
 }
 
 // Get handles getting a key from the server
 func (s *Server) Get(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	key := ps.ByName("key")
-	value, err := s.db.Get(key)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("key %s not found", key), http.StatusNotFound)
+
+	shard := s.shards.GetShardIndex(key)
+	if shard != s.shards.Index {
+		s.redirectRequest(w, r, shard, http.MethodGet)
 		return
 	}
 
-	shard := s.getShard(key)
-	if shard != s.shardIndex {
-		s.redirectRequest(w, r, shard, http.MethodGet)
+	value, err := s.db.Get(key)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("key %s not found", key), http.StatusNotFound)
 		return
 	}
 
@@ -68,8 +57,8 @@ func (s *Server) Set(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 		return
 	}
 
-	shard := s.getShard(key)
-	if shard != s.shardIndex {
+	shard := s.shards.GetShardIndex(key)
+	if shard != s.shards.Index {
 		s.redirectRequest(w, r, shard, http.MethodPut)
 		return
 	}
@@ -85,7 +74,7 @@ func (s *Server) Set(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 
 // redirectRequest redirects a request to a given shard.
 func (s *Server) redirectRequest(w http.ResponseWriter, r *http.Request, shard int, method string) {
-	url := "http://" + s.addresses[shard] + r.RequestURI
+	url := "http://" + s.shards.Addresses[shard] + r.RequestURI
 
 	client := &http.Client{}
 	req, err := http.NewRequest(method, url, nil)
@@ -108,8 +97,8 @@ func (s *Server) redirectRequest(w http.ResponseWriter, r *http.Request, shard i
 func (s *Server) Delete(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	key := ps.ByName("key")
 
-	shard := s.getShard(key)
-	if shard != s.shardIndex {
+	shard := s.shards.GetShardIndex(key)
+	if shard != s.shards.Index {
 		s.redirectRequest(w, r, shard, http.MethodDelete)
 	}
 

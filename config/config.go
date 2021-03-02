@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"io/ioutil"
 )
 
@@ -67,4 +68,11 @@ func (c *Config) ParseConfigShards(shardName string) (*Shards, error) {
 		Amount:    len(c.Shards),
 		Index:     index,
 	}, nil
+}
+
+func (s *Shards) GetShardIndex(key string) int {
+	h := fnv.New64()
+	h.Write([]byte(key))
+
+	return int(h.Sum64() % uint64(s.Amount))
 }
