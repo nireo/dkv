@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
-	"io/ioutil"
 	"log"
 
 	"github.com/nireo/dkv/config"
@@ -31,14 +29,9 @@ func parse() {
 
 func main() {
 	parse()
-	confFile, err := ioutil.ReadFile("./conf.json")
+	conf, err := config.ParseConfigFile("./conf.json")
 	if err != nil {
-		log.Fatalf("error reading configuration file, err: %s", err)
-	}
-
-	var conf config.Config
-	if err := json.Unmarshal(confFile, &conf); err != nil {
-		log.Fatalf("error parsing configuration data, err: %s", err)
+		log.Fatalf("could not parse config file, err: %s", err)
 	}
 
 	index := -1
