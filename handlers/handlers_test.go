@@ -1,15 +1,16 @@
 package handlers
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 
-	"github.com/julienschmidt/httprouter"
 	"github.com/nireo/dkv/config"
 	"github.com/nireo/dkv/db"
 )
@@ -52,80 +53,88 @@ func createTestServer(t *testing.T, id int, addresses map[int]string) (*db.DB, *
 	return db, s
 }
 
-func TestServerGetSet(t *testing.T) {
-	var test1GetHandler, test1SetHandler func(w http.ResponseWriter, r *http.Request)
-	var test2GetHandler, test2SetHandler func(w http.ResponseWriter, r *http.Request)
+func TestServer(t *testing.T) {
+	var ts1GetHandler, ts1SetHandler func(w http.ResponseWriter, r *http.Request)
+	var ts2GetHandler, ts2SetHandler func(w http.ResponseWriter, r *http.Request)
 
-	test1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.RequestURI, "/get") {
-			test1GetHandler(w, r)
+			ts1GetHandler(w, r)
 		} else if strings.HasPrefix(r.RequestURI, "/set") {
-			test1SetHandler(w, r)
+			ts1SetHandler(w, r)
 		}
 	}))
-	defer test1.Close()
+	defer ts1.Close()
 
-	test2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.RequestURI, "/get") {
-			test2GetHandler(w, r)
+			ts2GetHandler(w, r)
 		} else if strings.HasPrefix(r.RequestURI, "/set") {
-			test2SetHandler(w, r)
+			ts2SetHandler(w, r)
 		}
 	}))
-	defer test2.Close()
+	defer ts2.Close()
 
-	addresses := map[int]string{
-		0: strings.TrimPrefix(test1.URL, "http://"),
-		1: strings.TrimPrefix(test2.URL, "http://"),
+	addrs := map[int]string{
+		0: strings.TrimPrefix(ts1.URL, "http://"),
+		1: strings.TrimPrefix(ts2.URL, "http://"),
 	}
 
-	// testvalue1 goes to shard 1 and testvalue goes to shard 0 due to the hashing function
-	db1, sr1 := createTestServer(t, 0, addresses)
-	db2, sr2 := createTestServer(t, 1, addresses)
+	db1, web1 := createTestServer(t, 0, addrs)
+	db2, web2 := createTestServer(t, 1, addrs)
 
-	test1GetHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		params := []httprouter.Param{
-			{Key: "key", Value: "testvalue1"},
-		}
-		sr1.Get(w, r, params)
-	})
-
-	test1SetHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		params := []httprouter.Param{
-			{Key: "key", Value: "testvalue1"},
-		}
-		r.Body = ioutil.NopCloser(strings.NewReader("testvalue1"))
-		sr1.Set(w, r, params)
-	})
-
-	test2GetHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		params := []httprouter.Param{
-			{Key: "key", Value: "testvalue"},
-		}
-		sr2.Get(w, r, params)
-	})
-
-	test2SetHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		params := []httprouter.Param{
-			{Key: "key", Value: "testvalue"},
-		}
-		r.Body = ioutil.NopCloser(strings.NewReader("testvalue"))
-		sr2.Set(w, r, params)
-	})
-
-	if _, err := http.Post(test1.URL+"/set", "text/plain", nil); err != nil {
-		t.Fatalf("could not send set request, err: %s", err)
+	keys := map[string]int{
+		"testvalue1": 1,
+		"testvalue":  0,
 	}
 
-	if _, err := http.Post(test2.URL+"/set", "text/plain", nil); err != nil {
-		t.Fatalf("could not send set request, err: %s", err)
+	ts1GetHandler = web1.GetHTTP
+	ts1SetHandler = web1.SetHTTP
+	ts2GetHandler = web2.GetHTTP
+	ts2SetHandler = web2.SetHTTP
+
+	for key := range keys {
+		_, err := http.Get(fmt.Sprintf(ts1.URL+"/set?key=%s&value=value-%s", key, key))
+		if err != nil {
+			t.Fatalf("Could not set the key %q: %v", key, err)
+		}
 	}
 
-	if _, err := db1.Get("testvalue"); err != nil {
-		t.Fatalf("could not find 'testvalue' from db1, err: %s", err)
+	for key := range keys {
+		resp, err := http.Get(fmt.Sprintf(ts1.URL+"/get?key=%s", key))
+		if err != nil {
+			t.Fatalf("Get key %q error: %v", key, err)
+		}
+		contents, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("Could read contents of the key %q: %v", key, err)
+		}
+
+		want := []byte("value-" + key)
+		if !bytes.Contains(contents, want) {
+			t.Errorf("Unexpected contents of the key %q: got %q, want the result to contain %q", key, contents, want)
+		}
+
+		log.Printf("Contents of key %q: %s", key, contents)
 	}
 
-	if _, err := db2.Get("testvalue1"); err != nil {
-		t.Fatalf("could not find 'testvalue1' from db2, err: %s", err)
+	value1, err := db1.Get("testvalue")
+	if err != nil {
+		t.Fatalf("USA key error: %v", err)
+	}
+
+	want1 := "value-testvalue"
+	if !bytes.Equal(value1, []byte(want1)) {
+		t.Errorf("Unexpected value of USA key: got %q, want %q", value1, want1)
+	}
+
+	value2, err := db2.Get("testvalue1")
+	if err != nil {
+		t.Fatalf("Soviet key error: %v", err)
+	}
+
+	want2 := "value-testvalue1"
+	if !bytes.Equal(value2, []byte(want2)) {
+		t.Errorf("Unexpected value of Soviet key: got %q, want %q", value2, want2)
 	}
 }

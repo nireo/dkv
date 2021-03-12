@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"net/http"
 
 	"github.com/nireo/dkv/config"
 	"github.com/nireo/dkv/db"
@@ -47,8 +48,11 @@ func main() {
 
 	log.Printf("starting shard: %d at %s", shards.Amount, shards.Addresses[shards.Index])
 
-	server := handlers.NewServer(db, shards)
-	if err := server.Listen(*address); err != nil {
-		log.Fatalf("error when running server, err: %s", err)
-	}
+	srv := handlers.NewServer(db, shards)
+
+	http.HandleFunc("/get", srv.GetHTTP)
+	http.HandleFunc("/set", srv.GetHTTP)
+	http.HandleFunc("/del", srv.DeleteHTTP)
+
+	log.Fatal(http.ListenAndServe(*address, nil))
 }
