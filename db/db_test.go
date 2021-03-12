@@ -36,6 +36,14 @@ func TestGetSet(t *testing.T) {
 	}
 }
 
+func setKey(t *testing.T, d *db.DB, key, val string) {
+	t.Helper()
+
+	if err := d.Set(key, []byte(val)); err != nil {
+		t.Fatalf("error setting key-val pair (%s, %s), err: %s", key, val, err)
+	}
+}
+
 func TestDelete(t *testing.T) {
 	dir, err := ioutil.TempDir(os.TempDir(), "dkvdb")
 	if err != nil {
@@ -49,12 +57,9 @@ func TestDelete(t *testing.T) {
 	}
 	defer db.Close()
 
-	if err := db.Set("test1", []byte("value1")); err != nil {
-		t.Fatalf("could not write key: %v", err)
-	}
-
+	setKey(t, db, "test1", "value1")
 	if _, err := db.Get("test1"); err != nil {
-		t.Fatalf("error getting key, err: %s", err)
+		t.Fatalf("error while getting key, err: %s", err)
 	}
 
 	if err := db.Delete("test1"); err != nil {
@@ -63,5 +68,38 @@ func TestDelete(t *testing.T) {
 
 	if _, err := db.Get("test1"); err == nil {
 		t.Fatalf("get was not deleted")
+	}
+}
+
+func TestDeleteAll(t *testing.T) {
+	dir, err := ioutil.TempDir(os.TempDir(), "dkvdb")
+	if err != nil {
+		t.Fatalf("error creating temp file, err: %s", err)
+	}
+	defer os.Remove(dir)
+
+	db, err := db.NewDatabase(dir)
+	if err != nil {
+		t.Fatalf("could not create new database, err: %s", err)
+	}
+	defer db.Close()
+
+	setKey(t, db, "testval1", "nothing1")
+	setKey(t, db, "yessir", "nothing2")
+
+	doesntBelong := (func(name string) bool {
+		return name == "yessir"
+	})
+
+	if err := db.DeleteNotBelonging(doesntBelong); err != nil {
+		t.Fatalf("could not delete non-belonging keys, err: %s", err)
+	}
+
+	if _, err := db.Get("testval1"); err != nil {
+		t.Fatalf("could not find 'testval1', err: %s", err)
+	}
+
+	if _, err := db.Get("yessir"); err == nil {
+		t.Fatalf("could find yessir even though it should be deleted, err: %s", err)
 	}
 }

@@ -36,6 +36,29 @@ func (d *DB) Get(key string) ([]byte, error) {
 	return data, err
 }
 
+func (d *DB) DeleteNotBelonging(doesntBelong func(string) bool) error {
+	iter := d.db.NewIterator(nil, nil)
+	var keys []string
+	for iter.Next() {
+		key := string(iter.Key())
+		if doesntBelong(key) {
+			keys = append(keys, key)
+		}
+	}
+	iter.Release()
+	if err := iter.Error(); err != nil {
+		return err
+	}
+
+	for _, key := range keys {
+		if err := d.Delete(key); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // Set creates a key-value entry in the database
 func (d *DB) Set(key string, value []byte) error {
 	return d.db.Put([]byte(key), value, nil)

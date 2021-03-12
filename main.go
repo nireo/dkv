@@ -5,9 +5,9 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/nireo/dkv/shards"
 	"github.com/nireo/dkv/db"
 	"github.com/nireo/dkv/handlers"
+	"github.com/nireo/dkv/shards"
 )
 
 // define command line flags
@@ -15,7 +15,7 @@ var (
 	dbPath     = flag.String("db", "", "path to the database")
 	address    = flag.String("addr", "localhost:8080", "address where the server will be hosted")
 	configFile = flag.String("conf", "conf.json", "shards file for shards")
-	shardName      = flag.String("shards", "", "the shards used for the data")
+	shardName  = flag.String("shards", "", "the shards used for the data")
 )
 
 func parse() {
@@ -53,6 +53,7 @@ func main() {
 	http.HandleFunc("/get", srv.GetHTTP)
 	http.HandleFunc("/set", srv.GetHTTP)
 	http.HandleFunc("/del", srv.DeleteHTTP)
+	http.HandleFunc("/purge", srv.DeleteNotBelonging)
 
 	log.Fatal(http.ListenAndServe(*address, nil))
 }

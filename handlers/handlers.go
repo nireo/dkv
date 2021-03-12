@@ -89,3 +89,17 @@ func (s *Server) DeleteHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (s *Server) DeleteNotBelonging(w http.ResponseWriter, r *http.Request) {
+	doesntBelong := (func(key string) bool {
+		return s.shards.GetShardIndex(key) != s.shards.Index
+	})
+
+	if err := s.db.DeleteNotBelonging(doesntBelong); err != nil {
+		http.Error(w, "error while deleting non-belonging keys, err: "+err.Error(),
+			http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
