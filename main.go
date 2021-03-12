@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/nireo/dkv/config"
+	"github.com/nireo/dkv/shards"
 	"github.com/nireo/dkv/db"
 	"github.com/nireo/dkv/handlers"
 )
@@ -14,8 +14,8 @@ import (
 var (
 	dbPath     = flag.String("db", "", "path to the database")
 	address    = flag.String("addr", "localhost:8080", "address where the server will be hosted")
-	configFile = flag.String("conf", "conf.json", "config file for shards")
-	shard      = flag.String("shard", "", "the shard used for the data")
+	configFile = flag.String("conf", "conf.json", "shards file for shards")
+	shardName      = flag.String("shards", "", "the shards used for the data")
 )
 
 func parse() {
@@ -23,21 +23,21 @@ func parse() {
 	if *dbPath == "" {
 		log.Fatal("database field cannot be empty")
 	}
-	if *shard == "" {
-		log.Fatal("shard field cannot be empty")
+	if *shardName == "" {
+		log.Fatal("shards field cannot be empty")
 	}
 }
 
 func main() {
 	parse()
-	conf, err := config.ParseConfigFile("./conf.json")
+	conf, err := shards.ParseConfigFile("./conf.json")
 	if err != nil {
-		log.Fatalf("could not parse config file, err: %s", err)
+		log.Fatalf("could not parse shards file, err: %s", err)
 	}
 
-	shards, err := conf.ParseConfigShards(*shard)
+	shardsList, err := conf.ParseConfigShards(*shardName)
 	if err != nil {
-		log.Fatalf("error parsing shard, err: %s", err)
+		log.Fatalf("error parsing shards, err: %s", err)
 	}
 
 	db, err := db.NewDatabase(*dbPath)
@@ -46,9 +46,9 @@ func main() {
 	}
 	defer db.Close()
 
-	log.Printf("starting shard: %d at %s", shards.Amount, shards.Addresses[shards.Index])
+	log.Printf("starting shards: %d at %s", shardsList.Amount, shardsList.Addresses[shardsList.Index])
 
-	srv := handlers.NewServer(db, shards)
+	srv := handlers.NewServer(db, shardsList)
 
 	http.HandleFunc("/get", srv.GetHTTP)
 	http.HandleFunc("/set", srv.GetHTTP)

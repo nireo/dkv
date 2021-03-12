@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nireo/dkv/config"
+	"github.com/nireo/dkv/shards"
 	"github.com/nireo/dkv/db"
 )
 
@@ -43,7 +43,7 @@ func createTestServer(t *testing.T, id int, addresses map[int]string) (*db.DB, *
 	t.Helper()
 
 	db := createShardDb(t, id)
-	cfg := &config.Shards{
+	cfg := &shards.Shards{
 		Addresses: addresses,
 		Amount:    len(addresses),
 		Index:     id,

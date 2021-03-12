@@ -6,23 +6,20 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/julienschmidt/httprouter"
-	"github.com/nireo/dkv/config"
 	"github.com/nireo/dkv/db"
+	"github.com/nireo/dkv/shards"
 )
 
 // Server contains handlers
 type Server struct {
 	db     *db.DB
-	router *httprouter.Router
-	shards *config.Shards
+	shards *shards.Shards
 }
 
 // NewServer returns a new instance of server given a database
-func NewServer(db *db.DB, s *config.Shards) *Server {
+func NewServer(db *db.DB, s *shards.Shards) *Server {
 	return &Server{
 		db:     db,
-		router: httprouter.New(),
 		shards: s,
 	}
 }
@@ -61,11 +58,11 @@ func (s *Server) SetHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "error setting value, err: %s"+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Write([]byte("shard sent to" + strconv.Itoa(shard)))
+	w.Write([]byte("shards sent to" + strconv.Itoa(shard)))
 }
 
 func (s *Server) redirectHTTP(shard int, w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "redirecting from shard %d to shard %d", s.shards.Index, shard)
+	fmt.Fprintf(w, "redirecting from shards %d to shards %d", s.shards.Index, shard)
 	resp, err := http.Get("http://" + s.shards.Addresses[shard] + r.RequestURI)
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
