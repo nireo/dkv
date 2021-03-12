@@ -1,0 +1,9 @@
+{
+  "shards": [
+    {
+      "name": "sh1",
+      "index": 0,
+      "address": "localhost:8080"
+    }
+  ]
+}
