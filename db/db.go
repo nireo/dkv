@@ -3,12 +3,15 @@
 package db
 
 import (
+	"errors"
+
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // DB represents the database
 type DB struct {
-	db *leveldb.DB
+	db    *leveldb.DB
+	ronly bool // indicator if the database is in the read-only mode
 }
 
 // Close closes the database connection
@@ -17,13 +20,13 @@ func (d *DB) Close() error {
 }
 
 // NewDatabase returns a new instance of a database
-func NewDatabase(path string) (*DB, error) {
+func NewDatabase(path string, ronly bool) (*DB, error) {
 	ldb, err := leveldb.OpenFile(path, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	return &DB{db: ldb}, nil
+	return &DB{db: ldb, ronly: ronly}, nil
 }
 
 // Get finds a key-value pair from the database
@@ -36,7 +39,13 @@ func (d *DB) Get(key string) ([]byte, error) {
 	return data, err
 }
 
+// DeleteNotBelonging deletes all the key-value pairs in which the key matches the
+// doesntBelong function.
 func (d *DB) DeleteNotBelonging(doesntBelong func(string) bool) error {
+	if d.ronly {
+		return errors.New("the database is in read-only mode.")
+	}
+
 	iter := d.db.NewIterator(nil, nil)
 	var keys []string
 	for iter.Next() {
@@ -61,10 +70,18 @@ func (d *DB) DeleteNotBelonging(doesntBelong func(string) bool) error {
 
 // Set creates a key-value entry in the database
 func (d *DB) Set(key string, value []byte) error {
+	if d.ronly {
+		return errors.New("the database is in read-only mode")
+	}
+
 	return d.db.Put([]byte(key), value, nil)
 }
 
 // Delete removes an entry from the database
 func (d *DB) Delete(key string) error {
+	if d.ronly {
+		return errors.New("the database is in read-only mode")
+	}
+
 	return d.db.Delete([]byte(key), nil)
 }

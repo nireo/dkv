@@ -16,6 +16,7 @@ var (
 	address    = flag.String("addr", "localhost:8080", "address where the server will be hosted")
 	configFile = flag.String("conf", "conf.json", "shards file for shards")
 	shardName  = flag.String("shards", "", "the shards used for the data")
+	ronly      = flag.Bool("ronly", false, "set the database into read-only mode")
 )
 
 func parse() {
@@ -40,7 +41,7 @@ func main() {
 		log.Fatalf("error parsing shards, err: %s", err)
 	}
 
-	db, err := db.NewDatabase(*dbPath)
+	db, err := db.NewDatabase(*dbPath, *ronly)
 	if err != nil {
 		log.Fatalf("error opening db: %s, err: %s", *dbPath, err)
 	}

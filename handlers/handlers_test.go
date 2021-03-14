@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nireo/dkv/shards"
 	"github.com/nireo/dkv/db"
+	"github.com/nireo/dkv/shards"
 )
 
 func createShardDb(t *testing.T, id int) *db.DB {
@@ -27,7 +27,7 @@ func createShardDb(t *testing.T, id int) *db.DB {
 		os.Remove(dir)
 	})
 
-	db, err := db.NewDatabase(dir)
+	db, err := db.NewDatabase(dir, false)
 	if err != nil {
 		t.Fatalf("could not create new database, err: %s", err)
 	}

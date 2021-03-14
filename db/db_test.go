@@ -16,7 +16,7 @@ func TestGetSet(t *testing.T) {
 	}
 	defer os.Remove(dir)
 
-	db, err := db.NewDatabase(dir)
+	db, err := db.NewDatabase(dir, false)
 	if err != nil {
 		t.Fatalf("could not create new database, err: %s", err)
 	}
@@ -51,7 +51,7 @@ func TestDelete(t *testing.T) {
 	}
 	defer os.Remove(dir)
 
-	db, err := db.NewDatabase(dir)
+	db, err := db.NewDatabase(dir, false)
 	if err != nil {
 		t.Fatalf("could not create new database, err: %s", err)
 	}
@@ -78,7 +78,7 @@ func TestDeleteAll(t *testing.T) {
 	}
 	defer os.Remove(dir)
 
-	db, err := db.NewDatabase(dir)
+	db, err := db.NewDatabase(dir, false)
 	if err != nil {
 		t.Fatalf("could not create new database, err: %s", err)
 	}
@@ -101,5 +101,35 @@ func TestDeleteAll(t *testing.T) {
 
 	if _, err := db.Get("yessir"); err == nil {
 		t.Fatalf("could find yessir even though it should be deleted, err: %s", err)
+	}
+}
+
+func TestReadOnly(t *testing.T) {
+	dir, err := ioutil.TempDir(os.TempDir(), "dkvdb")
+	if err != nil {
+		t.Fatalf("error creating temp file, err: %s", err)
+	}
+	defer os.Remove(dir)
+
+	db, err := db.NewDatabase(dir, true)
+	if err != nil {
+		t.Fatalf("could not create new database, err: %s", err)
+	}
+	defer db.Close()
+
+	if err := db.Set("testkey", []byte("testval")); err == nil {
+		t.Fatalf("was able to write to dabase in read-only mode")
+	}
+
+	if _, err := db.Get("testkey"); err == nil {
+		t.Fatalf("was able to read new value in read-only mode")
+	}
+
+	doesntBelong := (func(name string) bool {
+		return name == "testkey"
+	})
+
+	if err := db.DeleteNotBelonging(doesntBelong); err == nil {
+		t.Fatalf("was able to delete values in read-only mode")
 	}
 }
