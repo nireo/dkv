@@ -8,6 +8,12 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
+var (
+	ErrReadOnly  = errors.New("cannot make changes to database, since it is in read-only mode.")
+	ErrKeyLength = errors.New("the key length cannot be 0")
+	ErrNotFound  = errors.New("the key was not found")
+)
+
 // DB represents the database
 type DB struct {
 	db    *leveldb.DB
@@ -43,7 +49,7 @@ func (d *DB) Get(key string) ([]byte, error) {
 // doesntBelong function.
 func (d *DB) DeleteNotBelonging(doesntBelong func(string) bool) error {
 	if d.ronly {
-		return errors.New("the database is in read-only mode.")
+		return ErrReadOnly
 	}
 
 	iter := d.db.NewIterator(nil, nil)
@@ -71,16 +77,24 @@ func (d *DB) DeleteNotBelonging(doesntBelong func(string) bool) error {
 // Set creates a key-value entry in the database
 func (d *DB) Set(key string, value []byte) error {
 	if d.ronly {
-		return errors.New("the database is in read-only mode")
+		return ErrReadOnly
 	}
 
 	return d.db.Put([]byte(key), value, nil)
 }
 
+// CreateBucket creates a pointer to a bucket
+func (d *DB) CreateBucket(identifier []byte) *Bucket {
+	return &Bucket{
+		db: d,
+		id: identifier,
+	}
+}
+
 // Delete removes an entry from the database
 func (d *DB) Delete(key string) error {
 	if d.ronly {
-		return errors.New("the database is in read-only mode")
+		return ErrReadOnly
 	}
 
 	return d.db.Delete([]byte(key), nil)
