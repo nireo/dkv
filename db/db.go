@@ -3,19 +3,27 @@
 package db
 
 import (
+	"bytes"
 	"errors"
+	"log"
 	"math"
 	"sync"
 
 	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 var (
 	// errors
-	ErrReadOnly   = errors.New("cannot make changes to database, since it is in read-only mode.")
-	ErrKeyLength  = errors.New("the key length cannot be 0")
-	ErrNotFound   = errors.New("the key was not found")
-	ErrBucketName = errors.New("the bucket name is too short")
+	ErrReadOnly     = errors.New("cannot make changes to database, since it is in read-only mode.")
+	ErrKeyLength    = errors.New("the key length cannot be 0")
+	ErrNotFound     = errors.New("the key was not found")
+	ErrBucketName   = errors.New("the bucket name is too short")
+	ErrNoFirstKey   = errors.New("there are no keys in the bucket")
+	ErrValDontMatch = errors.New("values don't match")
+
+	replicaBucket = "re"
+	defaultBucket = "de"
 )
 
 // MaxBuckets is the maximum amount of buckets
@@ -37,6 +45,12 @@ func (d *DB) Close() error {
 	return d.db.Close()
 }
 
+// GetLevelDB returns a pointer to the underlying levelDB database
+// this is mostly used for testing if buckets really insert into buckets
+func (d *DB) GetLevelDB() *leveldb.DB {
+	return d.db
+}
+
 // NewDatabase returns a new instance of a database
 func NewDatabase(path string, ronly bool) (*DB, error) {
 	ldb, err := leveldb.OpenFile(path, nil)
@@ -44,17 +58,31 @@ func NewDatabase(path string, ronly bool) (*DB, error) {
 		return nil, err
 	}
 
-	return &DB{db: ldb, ronly: ronly}, nil
+	d := &DB{db: ldb, ronly: ronly}
+
+	d.buckets = make(map[string][]byte)
+
+	// create the default bucket
+	if _, err := d.newBucket(defaultBucket); err != nil {
+		return nil, err
+	}
+
+	// create the replication bucket
+	if _, err := d.newBucket("re"); err != nil {
+		return nil, err
+	}
+
+	return d, nil
 }
 
 // Get finds a key-value pair from the database
 func (d *DB) Get(key string) ([]byte, error) {
-	data, err := d.db.Get([]byte(key), nil)
+	data, err := d.Bucket(defaultBucket).Get([]byte(key))
 	if err != nil {
 		return nil, err
 	}
 
-	return data, err
+	return data, nil
 }
 
 // DeleteNotBelonging deletes all the key-value pairs in which the key matches the
@@ -64,10 +92,11 @@ func (d *DB) DeleteNotBelonging(doesntBelong func(string) bool) error {
 		return ErrReadOnly
 	}
 
-	iter := d.db.NewIterator(nil, nil)
+	iter := d.db.NewIterator(util.BytesPrefix([]byte(defaultBucket)), nil)
 	var keys []string
 	for iter.Next() {
-		key := string(iter.Key())
+		// remove the bucket id from the key name
+		key := string(iter.Key())[2:]
 		if doesntBelong(key) {
 			keys = append(keys, key)
 		}
@@ -78,7 +107,11 @@ func (d *DB) DeleteNotBelonging(doesntBelong func(string) bool) error {
 	}
 
 	for _, key := range keys {
-		if err := d.Delete(key); err != nil {
+		// delete the key straight using the database since the bucket implementation
+		// is used for all the operations, meaning that the bucket prefix would just
+		// be appended to the start two times.
+		log.Println("deleting", key)
+		if err := d.Bucket(defaultBucket).Delete([]byte(key)); err != nil {
 			return err
 		}
 	}
@@ -86,6 +119,8 @@ func (d *DB) DeleteNotBelonging(doesntBelong func(string) bool) error {
 	return nil
 }
 
+// Bucket is the common method for doing operations on a bucket for example:
+// d.Bucket(defaultBucket).Get(key)
 func (d *DB) Bucket(name string) *Bucket {
 	bucket, ok := d.bucket(name)
 	if !ok {
@@ -95,6 +130,8 @@ func (d *DB) Bucket(name string) *Bucket {
 	return bucket
 }
 
+// bucket finds a bucket with a given name and returns a ok flag depending if
+// a bucket was found
 func (d *DB) bucket(name string) (*Bucket, bool) {
 	d.bmutex.RLock()
 	bucketId, ok := d.buckets[name]
@@ -110,6 +147,7 @@ func (d *DB) bucket(name string) (*Bucket, bool) {
 	return bucket, true
 }
 
+// newBucket creates a new bucket and returns an error if any
 func (d *DB) newBucket(name string) (*Bucket, error) {
 	if len(name) == 0 {
 		return nil, ErrBucketName
@@ -136,7 +174,11 @@ func (d *DB) Set(key string, value []byte) error {
 		return ErrReadOnly
 	}
 
-	return d.db.Put([]byte(key), value, nil)
+	if err := d.Bucket(defaultBucket).Set([]byte(key), value); err != nil {
+		return err
+	}
+
+	return d.Bucket(replicaBucket).Set([]byte(key), value)
 }
 
 // Delete removes an entry from the database
@@ -145,13 +187,51 @@ func (d *DB) Delete(key string) error {
 		return ErrReadOnly
 	}
 
-	return d.db.Delete([]byte(key), nil)
+	return d.Bucket(defaultBucket).Delete([]byte(key))
 }
 
-func prefixKey(prefix, key []byte) []byte {
-	buf := make([]byte, len(key)+len(prefix))
-	copy(buf, prefix[:])
-	copy(buf[len(prefix):], key)
+// GetNext returns the key-value pair that has changed and has not yet applied to replicas.
+func (d *DB) GetNextReplica() (key, value []byte, err error) {
+	iter := d.db.NewIterator(util.BytesPrefix([]byte(replicaBucket)), nil)
+	if ok := iter.First(); !ok {
+		return nil, nil, ErrNoFirstKey
+	}
 
-	return buf
+	k := iter.Key()
+	v := iter.Value()
+	key = copyBytes(k)
+	v = copyBytes(v)
+
+	iter.Release()
+
+	return key, value, nil
+}
+
+// DeleteReplication deletes the key from the replication queue.
+func (d *DB) DeleteReplicationKey(key, val []byte) (err error) {
+	value, err := d.Bucket(replicaBucket).Get(key)
+	if err != nil {
+		return err
+	}
+
+	if !bytes.Equal(value, val) {
+		return ErrValDontMatch
+	}
+
+	return d.Bucket(replicaBucket).Delete(key)
+}
+
+// SetOnReplica sets the key to the requested value into the default database
+func (d *DB) SetOnReplica(key string, val []byte) error {
+	return d.Bucket(defaultBucket).Set([]byte(key), val)
+}
+
+func copyBytes(b []byte) []byte {
+	if b == nil {
+		return nil
+	}
+	res := make([]byte, len(b))
+	copy(res, b)
+
+	return res
 }

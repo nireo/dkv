@@ -1,6 +1,8 @@
 package db
 
-import "github.com/syndtr/goleveldb/leveldb"
+import (
+	"github.com/syndtr/goleveldb/leveldb"
+)
 
 // Bucket is a collection of records in the database
 type Bucket struct {
@@ -19,7 +21,6 @@ func (b *Bucket) Set(key []byte, data []byte) error {
 	}
 
 	prefixedKey := b.bucketPrefix(key)
-
 	return b.db.db.Put(prefixedKey, data, nil)
 }
 

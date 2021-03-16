@@ -31,15 +31,15 @@ func TestBucketGetSet(t *testing.T) {
 	db := createTempDb(t, false)
 
 	// create a new bucket
-	testBucket := db.CreateBucket([]byte("test"))
+	testBucket := db.Bucket(defaultBucket)
 
 	if err := testBucket.Set([]byte("testkey"), []byte("testvalue")); err != nil {
 		t.Fatalf("error placing key into the bucket, err: %s", err)
 	}
 
-	// we shouldn't be able to find the key in the database normally
-	if _, err := db.Get("testkey"); err == nil {
-		t.Fatalf("found key from database without bucket")
+	ldb := db.GetLevelDB()
+	if _, err := ldb.Get([]byte("testkey"), nil); err == nil {
+		t.Fatalf("could find key from database without bucket")
 	}
 
 	// now test that we can find the key from the bucket
@@ -56,7 +56,7 @@ func TestBucketGetSet(t *testing.T) {
 func TestBucketDelete(t *testing.T) {
 	db := createTempDb(t, false)
 
-	testBucket := db.CreateBucket([]byte("test"))
+	testBucket := db.Bucket(defaultBucket)
 
 	if err := testBucket.Set([]byte("testkey"), []byte("testvalue")); err != nil {
 		t.Fatalf("error placing key into database")
