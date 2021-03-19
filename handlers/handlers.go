@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -84,6 +85,37 @@ func (s *Server) DeleteHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.db.Delete(key); err != nil {
 		http.Error(w, "could not delete key"+err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type nxtkv struct {
+	Key   string
+	Value string
+	Err   error
+}
+
+func (s *Server) GetNextKeyForReplication(w http.ResponseWriter, r *http.Request) {
+	enc := json.NewEncoder(w)
+	k, v, err := s.db.GetNextReplica()
+
+	enc.Encode(&nxtkv{
+		Key:   string(k),
+		Value: string(v),
+		Err:   err,
+	})
+}
+
+func (s *Server) DeleteReplicationkey(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	key := r.Form.Get("key")
+	value := r.Form.Get("value")
+
+	if err := s.db.DeleteReplicationKey([]byte(key), []byte(value)); err != nil {
+		http.Error(w, "could not delete replication key: "+err.Error(),
+			http.StatusInternalServerError)
 		return
 	}
 

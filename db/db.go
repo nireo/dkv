@@ -194,13 +194,17 @@ func (d *DB) Delete(key string) error {
 func (d *DB) GetNextReplica() (key, value []byte, err error) {
 	iter := d.db.NewIterator(util.BytesPrefix([]byte(replicaBucket)), nil)
 	if ok := iter.First(); !ok {
-		return nil, nil, ErrNoFirstKey
+		return nil, nil, nil
 	}
 
 	k := iter.Key()
 	v := iter.Value()
+
 	key = copyBytes(k)
-	v = copyBytes(v)
+	// remove the replication bucket prefix from the key
+	key = removeBucketPrefix([]byte(replicaBucket), key)
+
+	value = copyBytes(v)
 
 	iter.Release()
 
@@ -208,13 +212,13 @@ func (d *DB) GetNextReplica() (key, value []byte, err error) {
 }
 
 // DeleteReplication deletes the key from the replication queue.
-func (d *DB) DeleteReplicationKey(key, val []byte) (err error) {
+func (d *DB) DeleteReplicationKey(key, val []byte) error {
 	value, err := d.Bucket(replicaBucket).Get(key)
 	if err != nil {
 		return err
 	}
 
-	if !bytes.Equal(value, val) {
+	if !bytes.Equal(val, value) {
 		return ErrValDontMatch
 	}
 
@@ -234,4 +238,12 @@ func copyBytes(b []byte) []byte {
 	copy(res, b)
 
 	return res
+}
+
+// removeBucketPrefix removes the id from the start of the key and returns
+// a completely new buffer.
+func removeBucketPrefix(id []byte, key []byte) []byte {
+	buf := make([]byte, len(key)-len(id))
+	copy(buf, key[len(id):])
+	return buf
 }
