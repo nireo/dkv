@@ -7,18 +7,21 @@ import (
 
 	"github.com/nireo/dkv/db"
 	"github.com/nireo/dkv/handlers"
+	"github.com/nireo/dkv/replica"
 	"github.com/nireo/dkv/shards"
 )
 
-// define command line flags
+// define command-line flags
 var (
-	dbPath     = flag.String("db", "", "path to the database")
-	address    = flag.String("addr", "localhost:8080", "address where the server will be hosted")
-	configFile = flag.String("conf", "conf.json", "shards file for shards")
-	shardName  = flag.String("shards", "", "the shards used for the data")
-	ronly      = flag.Bool("ronly", false, "set the database into read-only mode")
+	dbPath      = flag.String("db", "", "path to the database")
+	address     = flag.String("addr", "localhost:8080", "address where the server will be hosted")
+	configFile  = flag.String("conf", "conf.json", "shards file for shards")
+	shardName   = flag.String("shards", "", "the shards used for the data")
+	ronly       = flag.Bool("ronly", false, "set the database into read-only mode")
+	replication = flag.Bool("replica", false, "run as read-only replica server")
 )
 
+// parse command-line flags
 func parse() {
 	flag.Parse()
 	if *dbPath == "" {
@@ -31,16 +34,19 @@ func parse() {
 
 func main() {
 	parse()
+	// read the shard config from the conf.json file
 	conf, err := shards.ParseConfigFile("./conf.json")
 	if err != nil {
 		log.Fatalf("could not parse shards file, err: %s", err)
 	}
 
+	// parse the shards
 	shardsList, err := conf.ParseConfigShards(*shardName)
 	if err != nil {
 		log.Fatalf("error parsing shards, err: %s", err)
 	}
 
+	// create a new db instance based on the command-line flags
 	db, err := db.NewDatabase(*dbPath, *ronly)
 	if err != nil {
 		log.Fatalf("error opening db: %s, err: %s", *dbPath, err)
@@ -49,12 +55,22 @@ func main() {
 
 	log.Printf("starting shards: %d at %s", shardsList.Amount, shardsList.Addresses[shardsList.Index])
 
+	if *replication {
+		master, ok := shardsList.Addresses[shardsList.Index]
+		if !ok {
+			log.Fatalf("could not find master address: %s", err)
+		}
+		go replica.Loop(db, master)
+	}
+
 	srv := handlers.NewServer(db, shardsList)
 
 	http.HandleFunc("/get", srv.GetHTTP)
 	http.HandleFunc("/set", srv.GetHTTP)
 	http.HandleFunc("/del", srv.DeleteHTTP)
 	http.HandleFunc("/purge", srv.DeleteNotBelonging)
+	http.HandleFunc("/del-rep", srv.DeleteReplicationkey)
+	http.HandleFunc("/next", srv.GetNextKeyForReplication)
 
 	log.Fatal(http.ListenAndServe(*address, nil))
 }

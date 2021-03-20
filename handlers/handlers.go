@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/nireo/dkv/db"
+	"github.com/nireo/dkv/replica"
 	"github.com/nireo/dkv/shards"
 )
 
@@ -91,20 +92,18 @@ func (s *Server) DeleteHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-type nxtkv struct {
-	Key   string
-	Value string
-	Err   error
-}
-
 func (s *Server) GetNextKeyForReplication(w http.ResponseWriter, r *http.Request) {
 	enc := json.NewEncoder(w)
 	k, v, err := s.db.GetNextReplica()
+	if err != nil {
+		http.Error(w, "could not retrieve next replication key: "+err.Error(),
+			http.StatusInternalServerError)
+		return
+	}
 
-	enc.Encode(&nxtkv{
+	enc.Encode(&replica.Next{
 		Key:   string(k),
 		Value: string(v),
-		Err:   err,
 	})
 }
 
