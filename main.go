@@ -65,12 +65,12 @@ func main() {
 
 	srv := handlers.NewServer(db, shardsList)
 
-	http.HandleFunc("/get", srv.GetHTTP)
-	http.HandleFunc("/set", srv.GetHTTP)
-	http.HandleFunc("/del", srv.DeleteHTTP)
+	http.HandleFunc("/get", srv.Get)
+	http.HandleFunc("/set", srv.Set)
+	http.HandleFunc("/del", srv.Delete)
 	http.HandleFunc("/purge", srv.DeleteNotBelonging)
-	http.HandleFunc("/del-rep", srv.DeleteReplicationkey)
-	http.HandleFunc("/next", srv.GetNextKeyForReplication)
+	http.HandleFunc("/del-rep", srv.DeleteReplicationKey)
+	http.HandleFunc("/next", srv.GetNextReplicationKey)
 
 	log.Fatal(http.ListenAndServe(*address, nil))
 }

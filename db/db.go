@@ -14,12 +14,22 @@ import (
 )
 
 var (
-	// errors
-	ErrReadOnly     = errors.New("cannot make changes to database, since it is in read-only mode.")
-	ErrKeyLength    = errors.New("the key length cannot be 0")
-	ErrNotFound     = errors.New("the key was not found")
-	ErrBucketName   = errors.New("the bucket name is too short")
-	ErrNoFirstKey   = errors.New("there are no keys in the bucket")
+	// ErrReadOnly happens when a someone tries to write into the database when it is read-only mode.
+	ErrReadOnly = errors.New("cannot make changes to database, since it is in read-only mode")
+
+	// ErrKeyLength happens when creating a key which length is 0, such that appending a bucket prefix
+	// would be quite dumb.
+	ErrKeyLength = errors.New("the key length cannot be 0")
+
+	// ErrNotFound happens when a wanted key-value pair doesn't exist.
+	ErrNotFound = errors.New("the key was not found")
+
+	// ErrBucketName happens when the wanted bucket name is too short.
+	ErrBucketName = errors.New("the bucket name is too short")
+
+	// ErrValDontMatch happens when deleting a key from the replication bucket. This means that
+	// that the key-value pair which the user wants to delete is already out-of-date and thus shouldn't
+	// be deleted.
 	ErrValDontMatch = errors.New("values don't match")
 
 	replicaBucket = "re"
@@ -134,7 +144,7 @@ func (d *DB) Bucket(name string) *Bucket {
 // a bucket was found
 func (d *DB) bucket(name string) (*Bucket, bool) {
 	d.bmutex.RLock()
-	bucketId, ok := d.buckets[name]
+	bucketID, ok := d.buckets[name]
 	d.bmutex.RUnlock()
 	if !ok {
 		return nil, false
@@ -142,7 +152,7 @@ func (d *DB) bucket(name string) (*Bucket, bool) {
 
 	bucket := &Bucket{
 		db: d,
-		id: bucketId,
+		id: bucketID,
 	}
 	return bucket, true
 }
@@ -190,7 +200,7 @@ func (d *DB) Delete(key string) error {
 	return d.Bucket(defaultBucket).Delete([]byte(key))
 }
 
-// GetNext returns the key-value pair that has changed and has not yet applied to replicas.
+// GetNextReplica returns the key-value pair that has changed and has not yet applied to replicas.
 func (d *DB) GetNextReplica() (key, value []byte, err error) {
 	iter := d.db.NewIterator(util.BytesPrefix([]byte(replicaBucket)), nil)
 	if ok := iter.First(); !ok {
@@ -211,7 +221,7 @@ func (d *DB) GetNextReplica() (key, value []byte, err error) {
 	return key, value, nil
 }
 
-// DeleteReplication deletes the key from the replication queue.
+// DeleteReplicationKey deletes the key from the replication queue.
 func (d *DB) DeleteReplicationKey(key, val []byte) error {
 	value, err := d.Bucket(replicaBucket).Get(key)
 	if err != nil {

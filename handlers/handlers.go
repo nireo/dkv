@@ -26,7 +26,8 @@ func NewServer(db *db.DB, s *shards.Shards) *Server {
 	}
 }
 
-func (s *Server) GetHTTP(w http.ResponseWriter, r *http.Request) {
+// Get takes a key as a url parameter and return the value in the request body
+func (s *Server) Get(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	key := r.Form.Get("key")
 
@@ -45,7 +46,9 @@ func (s *Server) GetHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Write(value)
 }
 
-func (s *Server) SetHTTP(w http.ResponseWriter, r *http.Request) {
+// Set takes in a key-value pair as url parameters and creates a key-value pair
+// into the database.
+func (s *Server) Set(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	key := r.Form.Get("key")
 	value := r.Form.Get("value")
@@ -74,7 +77,8 @@ func (s *Server) redirectHTTP(shard int, w http.ResponseWriter, r *http.Request)
 	io.Copy(w, resp.Body)
 }
 
-func (s *Server) DeleteHTTP(w http.ResponseWriter, r *http.Request) {
+// Delete takes in a key as an url parameter and removes that key from the database
+func (s *Server) Delete(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	key := r.Form.Get("key")
 
@@ -92,7 +96,8 @@ func (s *Server) DeleteHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) GetNextKeyForReplication(w http.ResponseWriter, r *http.Request) {
+// GetNextReplicationKey returns the next key in the replication queue
+func (s *Server) GetNextReplicationKey(w http.ResponseWriter, r *http.Request) {
 	enc := json.NewEncoder(w)
 	k, v, err := s.db.GetNextReplica()
 	if err != nil {
@@ -107,7 +112,8 @@ func (s *Server) GetNextKeyForReplication(w http.ResponseWriter, r *http.Request
 	})
 }
 
-func (s *Server) DeleteReplicationkey(w http.ResponseWriter, r *http.Request) {
+// DeleteReplicationKey removes given key-value pair from the replication queue
+func (s *Server) DeleteReplicationKey(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	key := r.Form.Get("key")
 	value := r.Form.Get("value")
@@ -121,6 +127,8 @@ func (s *Server) DeleteReplicationkey(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// DeleteNotBelonging removes all of the values in the database that don't match with the
+// shard hash.
 func (s *Server) DeleteNotBelonging(w http.ResponseWriter, r *http.Request) {
 	doesntBelong := (func(key string) bool {
 		return s.shards.GetShardIndex(key) != s.shards.Index
